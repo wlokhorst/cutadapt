@@ -394,6 +394,44 @@ cdef class Aligner:
 				else:
 					column[0].cost = j * self._insertion_cost
 				for i in range(1, last + 1):
+
+					# Diagonal masking (runtime) heuristic
+					#
+					# An observation: If any cell contains a value >k, then
+					# all the following cells on the same diagonal will also
+					# contain values >k, so they can be skipped.
+					# This could be considered a generalization of Ukkonen’s
+					# cutoff which allows to skip not only a single interval
+					# of cells, but a subset. Here is an example for k=1;
+					# empty cells are skipped due to Ukkonen’s cutoff,
+					# and cells marked with XX are skipped due to diagonal
+					# masking:
+
+					#       G  C  A  A  A  G  T  C
+					#    0  0  0  0  0  0  0  0  0
+					# C  1  1  0  1  1  1  1  1  0
+					# A  2  2  1  0  1  1  2  2  1
+					# A  3        1  0  1  2 XX XX
+					# A  4           1  0  1 XX XX
+					# G  5              1  0  1 XX
+					# G  6                 1  1  2
+					# T  7                    1  2
+					# A  8                       2
+
+					# We could theoretically skip a range of adjacent masked
+					# diagonals at once, but keeping track of the actual
+					# intervals to skip would probably eat up the gained time.
+					if diag_entry.cost > k:
+						# Remember for next iteration
+						diag_entry = column[i]
+						column[i] = diag_entry
+						# Assign some artificial cost that ensures that this cell
+						# does not get picked during cost minimization. k + 2
+						# is nice because it makes the skipped cells visible in
+						# the debug output.
+						column[i].cost = k + 2
+						continue
+
 					if compare_ascii:
 						characters_equal = (s1[i-1] == s2[j-1])
 					else:
@@ -425,13 +463,13 @@ cdef class Aligner:
 							cost = cost_deletion
 							origin = column[i].origin
 							matches = column[i].matches
-
 					# Remember the current cell for next iteration
 					diag_entry = column[i]
 
 					column[i].cost = cost
 					column[i].origin = origin
 					column[i].matches = matches
+
 				if self.debug:
 					with gil:
 						for i in range(last + 1):
