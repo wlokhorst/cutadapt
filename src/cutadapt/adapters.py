@@ -635,8 +635,6 @@ class Adapter:
 				pos = 0 if read_seq.startswith(self.sequence) else -1
 			elif self.where == SUFFIX:
 				pos = (len(read_seq) - len(self.sequence)) if read_seq.endswith(self.sequence) else -1
-			elif self.where == BACK or self.where == FRONT:
-				pos = read_seq.find(self.sequence)
 			# TODO BACK_NOT_INTERNAL, FRONT_NOT_INTERNAL
 		if pos >= 0:
 			match_args = (
@@ -701,25 +699,13 @@ class BackOrFrontAdapter(Adapter):
 		return None if no match was found given the matching criteria (minimum
 		overlap length, maximum error rate).
 		"""
-		read_seq = read.sequence.upper()  # temporary copy
-		pos = -1
-
-		# try to find an exact match first unless wildcards are allowed
-		if not self.adapter_wildcards:
-			pos = read_seq.find(self.sequence)
-		if pos >= 0:
-			alignment = (
-				0, len(self.sequence), pos, pos + len(self.sequence),
-				len(self.sequence), 0)
-		else:
-			alignment = self.aligner.locate(read_seq)
+		alignment = self.aligner.locate(read.sequence.upper())
 		if self._debug:
 			print(self.aligner.dpmatrix)  # pragma: no cover
 		if alignment is None:
 			return None
 
-		match = Match(*alignment, remove_before=self._remove_before, adapter=self, read=read)
-		return match
+		return Match(*alignment, remove_before=self._remove_before, adapter=self, read=read)
 
 
 class LinkedMatch:
