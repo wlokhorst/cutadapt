@@ -75,7 +75,20 @@ class AdapterCutter:
                 best_match = match
         return best_match
 
-    def masked_read(self, trimmed_read, matches):
+    def find_all_matches(self, read):
+        matches = []
+        trimmed_read = read
+        for _ in range(self.times):
+            match = self._best_match(trimmed_read)
+            if match is None:
+                # if nothing found, attempt no further rounds
+                break
+            matches.append(match)
+            trimmed_read = match.trimmed()
+        return matches
+
+    @staticmethod
+    def masked_read(trimmed_read, matches):
         # add N from last modification
         masked_sequence = trimmed_read.sequence
         for match in sorted(matches, reverse=True, key=lambda m: m.astart):
@@ -108,6 +121,84 @@ class AdapterCutter:
         The read is converted to uppercase before it is compared to the adapter
         sequences.
         """
+        found_matches = self.find_all_matches(read)
+        if not found_matches:
+            return read
+        # Found a match, update statistics
+        self.with_adapters += 1
+        for match in found_matches:
+            match.update_statistics(self.adapter_statistics[match.adapter])
+        matches.extend(found_matches)
+
+        if self.action == 'trim':
+            return match.trimmed()
+        elif self.action == 'mask':
+            masked = self.masked_read(match.trimmed(), matches)
+            assert len(masked) == len(read)
+            return masked
+        elif self.action is None:
+            return read
+
+
+class PairedAdapterCutterError(Exception):
+    pass
+
+
+class PairedAdapterCutter:
+    """
+    Repeatedly find one of multiple adapters in reads.
+    The number of times the search is repeated is specified by the
+    times parameter.
+    """
+
+    def __init__(self, adapters1, adapters2, action='trim'):
+        """
+        adapters1 -- list of Adapters to be removed from R1
+        adapters2 -- list of Adapters to be removed from R1
+        action -- What to do with a found adapter: None, 'trim', or 'mask'
+        """
+        if len(adapters1) != len(adapters2):
+            raise PairedAdapterCutterError(
+                "The number of reads to trim from R1 and R2 must be the same. "
+                "Given: {} for R1, {} for R2".format(len(adapters1), len(adapters2)))
+        self._cutter1 = AdapterCutter(adapters1, action=action)
+        self._cutter2 = AdapterCutter(adapters2, action=action)
+        self._adapter_indices1 = {a: i for i, a in enumerate(adapters1)}
+        self._adapter_indices2 = {a: i for i, a in enumerate(adapters2)}
+
+    def __repr__(self):
+        return 'PairedAdapterCutter(cutter1={!r}, cutter2={})'.format(
+            self._cutter1, self._cutter2)
+
+    def __call__(self, read1, read2, matches1, matches2):
+        """
+        """
+        match1 = self._cutter1._best_match(read1)
+        if match1 is None:
+            return read1, read2
+        match2 = self._cutter2._best_match(read2)
+        if match2 is None:
+            return read1, read2
+        adapter1 = match1.adapter
+        adapter2 = match2.adapter
+        if self._adapter_indices1[adapter1] != self._adapter_indices2[adapter2]:
+            return read1, read2
+
+        self._cutter1.do_action([match1])
+        self._cutter2.do_action([match2])
+
+        match1.update_statistics(self._cutter1.adapter_statistics[adapter1])
+        match2.update_statistics(self._cutter2.adapter_statistics[adapter2])
+
+        trimmed_read1 = match1.trimmed()
+        trimmed_read2 = match2.trimmed()
+
+        # now
+        # - update matches1, matches2
+        # - trim both reads
+        # - update statistics
+        #
+
         trimmed_read = read
         for _ in range(self.times):
             match = self._best_match(trimmed_read)
@@ -116,6 +207,7 @@ class AdapterCutter:
                 break
             matches.append(match)
             trimmed_read = match.trimmed()
+
             match.update_statistics(self.adapter_statistics[match.adapter])
 
         if not matches:
@@ -125,7 +217,19 @@ class AdapterCutter:
             # read is already trimmed, nothing to do
             pass
         elif self.action == 'mask':
-            trimmed_read = self.masked_read(trimmed_read, matches)
+            # add N from last modification
+            masked_sequence = trimmed_read.sequence
+            for match in sorted(matches, reverse=True, key=lambda m: m.astart):
+                ns = 'N' * (len(match.read.sequence) -
+                            len(match.trimmed().sequence))
+                # add N depending on match position
+                if match.remove_before:
+                    masked_sequence = ns + masked_sequence
+                else:
+                    masked_sequence += ns
+            # set masked sequence as sequence with original quality
+            trimmed_read.sequence = masked_sequence
+            trimmed_read.qualities = matches[0].read.qualities
             assert len(trimmed_read.sequence) == len(read)
         elif self.action is None:  # --no-trim
             trimmed_read = read[:]

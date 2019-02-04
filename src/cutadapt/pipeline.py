@@ -276,11 +276,15 @@ class PairedEndPipeline(Pipeline):
         Add a modifier for R1 and R2. If modify_first_read_only is True,
         the modifier is not added for R2.
         """
-        if not self._modify_first_read_only:
-            self._modifiers.append(PairedModifier(modifier, copy.copy(modifier)))
-        else:
+        if self._modify_first_read_only:
             self._modifiers.append(PairedModifier(modifier, None))
             self._should_warn_legacy = True
+        else:
+            self._modifiers.append(PairedModifier(modifier, copy.copy(modifier)))
+
+    def add_paired_modifier(self, modifier):
+        """Add a modifier without wrapping it in a PairedModifier"""
+        self._modifiers.append(modifier)
 
     def add1(self, modifier):
         """Add a modifier for R1 only"""
