@@ -199,13 +199,40 @@ def test_parse_file_notation(tmpdir):
         f.write(dedent(""">first_name
             ADAPTER1
             >second_name
-            ADAPTER2
+            ADAPTER2$
             """))
     parser = AdapterParser(
         max_error_rate=0.2, min_overlap=4, read_wildcards=False,
         adapter_wildcards=False, indels=False)
 
     adapters = list(parser.parse('file:' + tmp_path, cmdline_type='back'))
+    assert len(adapters) == 2
+    assert adapters[0].name == 'first_name'
+    assert adapters[0].sequence == 'ADAPTER1'
+    assert adapters[0].where == Where.BACK
+    assert adapters[1].name == 'second_name'
+    assert adapters[1].sequence == 'ADAPTER2'
+    assert adapters[1].where == Where.SUFFIX
+
+    for a in adapters:
+        assert a.max_error_rate == 0.2
+        assert a.min_overlap == 4
+        assert not a.read_wildcards
+        assert not a.adapter_wildcards
+        assert not a.indels
+
+
+def test_parse_front_anchored_file_notation(tmpdir):
+    tmp_path = str(tmpdir.join("adapters.fasta"))
+    with open(tmp_path, 'w') as f:
+        f.write(dedent(
+            """>first_name
+            ADAPTER1
+            >second_name
+            ADAPTER2
+            """))
+
+    adapters = list(AdapterParser().parse('^file:' + tmp_path, cmdline_type='front'))
     assert len(adapters) == 2
     assert adapters[0].name == 'first_name'
     assert adapters[0].sequence == 'ADAPTER1'
