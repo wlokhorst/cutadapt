@@ -202,15 +202,15 @@ class ReverseComplementer(Modifier):
     """Trim adapters from a read and its reverse complement"""
 
     def __init__(self, adapter_cutter: AdapterCutter):
-        self._adapter_cutter = adapter_cutter
+        self.adapter_cutter = adapter_cutter
         self.n_reverse_complemented = 0
         self.not_reverse_complemented = 0  # TODO remove, only for debugging
 
     def __call__(self, read, matches):
         reverse_read = reverse_complemented_sequence(read)
 
-        forward_trimmed_read, forward_matches = self._adapter_cutter.match_and_trim(read)
-        reverse_trimmed_read, reverse_matches = self._adapter_cutter.match_and_trim(reverse_read)
+        forward_trimmed_read, forward_matches = self.adapter_cutter.match_and_trim(read)
+        reverse_trimmed_read, reverse_matches = self.adapter_cutter.match_and_trim(reverse_read)
 
         forward_match_count = sum(m.matches for m in forward_matches)
         reverse_match_count = sum(m.matches for m in reverse_matches)
@@ -223,9 +223,9 @@ class ReverseComplementer(Modifier):
             trimmed_read, matches = reverse_trimmed_read, reverse_matches
 
         if matches:
-            self._adapter_cutter.with_adapters += 1
+            self.adapter_cutter.with_adapters += 1
             for match in matches:
-                match.update_statistics(self._adapter_cutter.adapter_statistics[match.adapter])
+                match.update_statistics(self.adapter_cutter.adapter_statistics[match.adapter])
         return trimmed_read
 
 
