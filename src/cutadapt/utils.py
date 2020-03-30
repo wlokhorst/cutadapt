@@ -3,9 +3,12 @@ import sys
 import time
 import errno
 import multiprocessing
+import logging
 
 from xopen import xopen
 import dnaio
+
+logger = logging.getLogger(__name__)
 
 
 def available_cpu_count():
@@ -152,6 +155,7 @@ class FileOpener:
         self.threads = threads
 
     def xopen(self, path, mode):
+        logger.debug("Opening file '%s', mode '%s' with xopen", path, mode)
         return xopen(path, mode, compresslevel=self.compression_level, threads=self.threads)
 
     def xopen_or_none(self, path, mode):
@@ -161,17 +165,15 @@ class FileOpener:
         return self.xopen(path, mode)
 
     def xopen_pair(self, path1, path2, mode):
-        file1 = file2 = None
-        if path1 is not None:
-            file1 = self.xopen(path1, mode)
-            if path2 is not None:
-                file2 = self.xopen(path2, mode)
-        elif path2 is not None:
+        if path1 is None and path2 is not None:
             raise ValueError("When giving paths for paired-end files, only providing the second"
                 " file is not supported")
+        file1 = self.xopen_or_none(path1, mode)
+        file2 = self.xopen_or_none(path2, mode)
         return file1, file2
 
     def dnaio_open(self, *args, **kwargs):
+        logger.debug("Opening file '%s', mode '%s' with dnaio", args[0], kwargs['mode'])
         kwargs["opener"] = self.xopen
         return dnaio.open(*args, **kwargs)
 
